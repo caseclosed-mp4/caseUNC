@@ -1,0 +1,27 @@
+{
+  "file": "build/caseUNC.luau",
+  "sha256": "86ecbf9dd5d36b48b6700f5f32c7476c5fb311c57fcb8e7f698740d2de8383b9",
+  "bytes": 78189,
+  "modules": {
+    "modules/core.luau": "5a26494d3540b6a824c956c6e3db200f557d557f2a9608176d5adc1010480896",
+    "modules/crypto.luau": "56711949f25a20d9ec79b3204b439326e9bebb6ce3ee79a80ed4a9f6229ad47e",
+    "modules/integrity.luau": "fa4deb443e5b3dd0b02dbc9d68d4b9db32753298d06626d0d3c122e91a50296e",
+    "modules/console.luau": "ed1c73a27552f9f7e1da8b4ea0f5c424f653cdae527efc452b0eb0bba62b5b77",
+    "modules/harness.luau": "45acb1eaa28b635884cb2501eaa9147309ecc9265b2008cf8d4b965a5e3caf15",
+    "tests/cache.luau": "d325d2e774139fad62a6c3f66fc8dec3171195ee90068eab9f21587f5258bfa6",
+    "tests/closures.luau": "75a90e10e9ec414ab469eaa3f230065765ba51e05c1bc2520e1bf0255205a70c",
+    "tests/console.luau": "027e0e4a2e5820dbbe46584d3dee6a38bdba333c50837ee745f5d34636772c01",
+    "tests/crypt.luau": "f4e69644884f3f6479f9e3adf179f6e3f357d032a2bbb61c044a495e8438ba43",
+    "tests/debug.luau": "c04afd71603469d30fdc8789793164c58033de473c41d99df6a84a3bbf6fd424",
+    "tests/filesystem.luau": "7968fbfb90eaf6c41daf2e2bfb3255a6d00bc4b18dc7d7b49066d7b7b1f8bc26",
+    "tests/input.luau": "cb5b3e0f312572ddf6ef659e9b69e9187ecde4b7a87fbd7986dd9ae8fbc3cbd4",
+    "tests/instances.luau": "148a57b7052378c1e4a6a35a6d59d00e97919d7316392fa151616421ca269d00",
+    "tests/metatable.luau": "f9adb33c290e0324444cd7cbd0bfdf48d15fe6398a8f86f4276fe4986c0df9fd",
+    "tests/misc.luau": "507698600c48a01afbf912a627bb466b8bdc4c60b34aa8ce64150e7129fde97a",
+    "tests/scripts.luau": "73b3bdfd20b6aa205644aaa98639f4bb0d920d743e5ddcef40a80723be5c6b35",
+    "tests/drawing.luau": "dbbf34686a2f4dc0f685e093c8776d50da7eb29ca6279e8246fa4cb6e9503066",
+    "tests/websocket.luau": "9973827714d9799132fc7a02d9edc8a968e03e52eaa6ea9eb63187d0306d37b3",
+    "tests/antispoof.luau": "d2b90d0c91a8d5f30ecaf60795f7229ba44594f15b005d44fd92580364d4d944",
+    "caseUNC.luau": "d8c4ce7734d702a1f77607e54ed82555874b2913d836da01ae7019451e5263b4"
+  }
+}

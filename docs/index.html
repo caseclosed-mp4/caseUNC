@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>caseUNC — Executor Capability Report</title>
+  <meta name="description" content="caseUNC tests Roblox script executor capability, quality, and function support. View crypto-sealed reports and spoof risk." />
+  <link rel="stylesheet" href="assets/style.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230b0f14'/%3E%3Ctext x='50%25' y='54%25' text-anchor='middle' font-size='28' fill='%2356d364' font-family='monospace'%3EcU%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+  <div class="bg"></div>
+  <header class="top">
+    <div class="brand">
+      <span class="logo">caseUNC</span>
+      <span class="tag">executor capability suite</span>
+    </div>
+    <nav>
+      <a href="#run">Run</a>
+      <a href="#viewer">Viewer</a>
+      <a href="#about">About</a>
+      <a href="https://github.com/caseclosed-mp4/caseUNC" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Measure executors.<br /><span class="accent">Catch spoofs.</span></h1>
+      <p class="lede">
+        caseUNC is a Luau testing framework used to score script executor function support,
+        behavioral correctness, and anti-spoof integrity. Results are HMAC-SHA256 sealed and
+        can be inspected here on GitHub Pages.
+      </p>
+      <div class="cta-row">
+        <button id="copyLoadstring" class="btn primary">Copy loadstring</button>
+        <button id="scrollViewer" class="btn ghost">Open report viewer</button>
+      </div>
+      <pre class="code" id="loadstringBox">loadstring(game:HttpGet("https://raw.githubusercontent.com/caseclosed-mp4/caseUNC/main/build/caseUNC.luau"))()</pre>
+    </section>
+
+    <section id="run" class="panel">
+      <h2>Run in executor</h2>
+      <ol class="steps">
+        <li>Inject your executor and join a simple baseplate with a character.</li>
+        <li>Execute the loadstring above (or the GitHub raw build URL).</li>
+        <li>caseUNC prints to <strong>both</strong> the external terminal (rconsole) and Roblox output.</li>
+        <li>Report JSON is sealed, saved (if filesystem works), and copied to clipboard when possible.</li>
+        <li>Paste the base64 report code below to visualize passes, fails, and spoof risk.</li>
+      </ol>
+      <div class="config">
+        <h3>Optional config</h3>
+        <pre class="code">getgenv().caseUNCConfig = {
+    useExternal = true,
+    useRoblox = true,
+    hidePasses = false,
+    shuffleTests = true,
+    delay = 0,
+}
+loadstring(game:HttpGet("https://raw.githubusercontent.com/caseclosed-mp4/caseUNC/main/build/caseUNC.luau"))()</pre>
+      </div>
+    </section>
+
+    <section id="viewer" class="panel">
+      <h2>Report viewer</h2>
+      <p class="muted">Paste a caseUNC base64 report payload. Signature, body hash, and spoof findings are verified client-side.</p>
+      <textarea id="reportInput" placeholder="Paste base64 report code from caseUNC export..."></textarea>
+      <div class="cta-row">
+        <button id="parseBtn" class="btn primary">Decode &amp; verify</button>
+        <button id="clearBtn" class="btn ghost">Clear</button>
+        <label class="file-btn btn ghost">
+          Load JSON file
+          <input type="file" id="fileInput" accept="application/json,.json,.txt" hidden />
+        </label>
+      </div>
+      <div id="status" class="status" hidden></div>
+      <div id="reportView" class="report" hidden>
+        <div class="stats">
+          <div class="stat"><div class="label">Executor</div><div class="value" id="stExec">—</div></div>
+          <div class="stat"><div class="label">Score</div><div class="value" id="stRate">—</div></div>
+          <div class="stat"><div class="label">Passed</div><div class="value ok" id="stPass">—</div></div>
+          <div class="stat"><div class="label">Failed</div><div class="value bad" id="stFail">—</div></div>
+          <div class="stat"><div class="label">Spoof risk</div><div class="value" id="stRisk">—</div></div>
+          <div class="stat"><div class="label">Seal</div><div class="value" id="stSeal">—</div></div>
+        </div>
+        <div class="meta-grid" id="metaGrid"></div>
+        <div class="filters">
+          <input id="filterText" type="search" placeholder="Filter tests..." />
+          <select id="filterStatus">
+            <option value="all">All statuses</option>
+            <option value="pass">Pass</option>
+            <option value="fail">Fail</option>
+            <option value="skip">Skip</option>
+          </select>
+          <select id="filterCat">
+            <option value="all">All categories</option>
+          </select>
+        </div>
+        <div id="findings" class="findings"></div>
+        <div id="results" class="results"></div>
+      </div>
+    </section>
+
+    <section id="about" class="panel">
+      <h2>What caseUNC checks</h2>
+      <div class="cards">
+        <article><h3>UNC surface</h3><p>Cache, closures, console, crypt, debug, filesystem, input, instances, metatable, misc, scripts, drawing, websocket.</p></article>
+        <article><h3>Behavioral tests</h3><p>Functions must behave correctly, not merely exist. Known vectors catch shallow stubs.</p></article>
+        <article><h3>Anti-spoof</h3><p>Closure identity, hook restore, env isolation, crypt vectors, debug shape, and integrity canaries.</p></article>
+        <article><h3>Crypto seal</h3><p>Reports carry HMAC-SHA256 envelopes over canonical material so tampering is visible in the viewer.</p></article>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>caseUNC · MIT · not affiliated with Roblox Corporation</span>
+  </footer>
+
+  <script src="assets/app.js"></script>
+</body>
+</html>
