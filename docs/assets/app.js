@@ -1,7 +1,26 @@
 const SECRET = "caseUNC-report-seal-key-v1-do-not-trust-client-alone";
 const SALT_A = "cAsEuNc::v1::anti-spoof";
 
+// Detect report-only page (separate output-only view, no decoder UI)
+const IS_REPORT_ONLY =
+  document.body.classList.contains("report-only") ||
+  /report\.html([?#]|$)/i.test(location.pathname) ||
+  location.search.includes("output=1") ||
+  location.hash.includes("output=1");
+
 const $ = (id) => document.getElementById(id);
+
+function absUrl(path) {
+  // Build absolute URL relative to this script's directory so links work on
+  // GitHub Pages, local file://, and any deployment path.
+  const base = location.href.replace(/[^/]*$/, "");
+  return new URL(path, base).toString();
+}
+
+function buildShareUrl(payloadB64) {
+  const page = IS_REPORT_ONLY ? "" : "report.html";
+  return `${absUrl(page)}#r=${encodeURIComponent(payloadB64)}`;
+}
 
 function b64ToBytes(b64) {
   const bin = atob(b64.replace(/-/g, "+").replace(/_/g, "/").replace(/\s+/g, ""));
@@ -152,10 +171,32 @@ function escapeHtml(s) {
     .replaceAll('"', "&quot;");
 }
 
+function updateShareBar(rawInput) {
+  const bar = $("shareBar");
+  const urlInput = $("shareUrl");
+  const openBtn = $("openShareBtn");
+  if (!bar) return; // report-only page without share UI
+  const trimmed = (rawInput || "").trim();
+  if (!trimmed) {
+    bar.hidden = true;
+    return;
+  }
+  const url = buildShareUrl(trimmed);
+  if (urlInput) urlInput.value = url;
+  if (openBtn) openBtn.href = url;
+  bar.hidden = false;
+}
+
 async function showReport(report) {
   currentReport = report;
   const seal = await verifySeal(report);
   $("reportView").hidden = false;
+  // Update page title on report-only page so tabs/bookmarks are descriptive
+  if (IS_REPORT_ONLY && report.executor && report.executor.name) {
+    const ex = report.executor.name + (report.executor.version ? " " + report.executor.version : "");
+    const rate = report.summary && typeof report.summary.rate === "number" ? ` · ${report.summary.rate}%` : "";
+    document.title = `caseUNC — ${ex}${rate}`;
+  }
 
   const ex = report.executor || {};
   const sum = report.summary || {};
@@ -200,12 +241,16 @@ async function showReport(report) {
 }
 
 async function parseInput() {
+  const raw = $("reportInput") ? $("reportInput").value : "";
   try {
-    const report = decodePayload($("reportInput").value);
+    const report = decodePayload(raw);
     await showReport(report);
+    updateShareBar(raw);
   } catch (err) {
     $("reportView").hidden = true;
     setStatus("bad", String(err.message || err));
+    const bar = $("shareBar");
+    if (bar) bar.hidden = true;
   }
 }
 
@@ -214,31 +259,65 @@ function bootFromHash() {
   const m = hash.match(/[#&]r=([^&]+)/);
   if (m) {
     try {
-      $("reportInput").value = decodeURIComponent(m[1]);
+      const payload = decodeURIComponent(m[1]);
+      if ($("reportInput")) $("reportInput").value = payload;
       parseInput();
+      return true;
     } catch {
       /* ignore */
     }
   }
+  return false;
 }
 
-$("parseBtn").addEventListener("click", parseInput);
-$("clearBtn").addEventListener("click", () => {
-  $("reportInput").value = "";
+function showError(msg) {
+  const loading = $("report-loading");
+  const errEl = $("report-error");
+  if (loading) loading.hidden = true;
+  if (errEl) {
+    errEl.hidden = false;
+    errEl.innerHTML = "";
+    const text = document.createTextNode(msg + " ");
+    const link = document.createElement("a");
+    link.href = absUrl("index.html#viewer");
+    link.textContent = "← Open the main viewer";
+    errEl.appendChild(text);
+    errEl.appendChild(link);
+  }
+  const viewer = $("viewer");
+  if (viewer) viewer.hidden = true;
+}
+
+// ---------- Wire up elements that may or may not exist on each page ----------
+if ($("parseBtn")) $("parseBtn").addEventListener("click", parseInput);
+
+if ($("clearBtn")) $("clearBtn").addEventListener("click", () => {
+  if ($("reportInput")) $("reportInput").value = "";
   $("reportView").hidden = true;
   $("status").hidden = true;
+  const bar = $("shareBar");
+  if (bar) bar.hidden = true;
   currentReport = null;
+  if (IS_REPORT_ONLY) {
+    // On the output-only page a clear makes no sense without a decoder; bounce
+    // the user back to the main viewer.
+    location.href = absUrl("index.html#viewer");
+  }
 });
-$("filterText").addEventListener("input", () => currentReport && renderResults(currentReport));
-$("filterStatus").addEventListener("change", () => currentReport && renderResults(currentReport));
-$("filterCat").addEventListener("change", () => currentReport && renderResults(currentReport));
-$("fileInput").addEventListener("change", async (e) => {
+
+if ($("filterText")) $("filterText").addEventListener("input", () => currentReport && renderResults(currentReport));
+if ($("filterStatus")) $("filterStatus").addEventListener("change", () => currentReport && renderResults(currentReport));
+if ($("filterCat")) $("filterCat").addEventListener("change", () => currentReport && renderResults(currentReport));
+
+if ($("fileInput")) $("fileInput").addEventListener("change", async (e) => {
   const file = e.target.files && e.target.files[0];
   if (!file) return;
-  $("reportInput").value = await file.text();
+  const text = await file.text();
+  if ($("reportInput")) $("reportInput").value = text;
   parseInput();
 });
-$("copyLoadstring").addEventListener("click", async () => {
+
+if ($("copyLoadstring")) $("copyLoadstring").addEventListener("click", async () => {
   const text = $("loadstringBox").textContent;
   try {
     await navigator.clipboard.writeText(text);
@@ -248,6 +327,47 @@ $("copyLoadstring").addEventListener("click", async () => {
     $("copyLoadstring").textContent = "Select & copy manually";
   }
 });
-$("scrollViewer").addEventListener("click", () => $("viewer").scrollIntoView({ behavior: "smooth" }));
 
-bootFromHash();
+if ($("scrollViewer")) $("scrollViewer").addEventListener("click", () => $("viewer").scrollIntoView({ behavior: "smooth" }));
+
+// Share-link copy button (exists on both pages)
+if ($("copyShareBtn")) $("copyShareBtn").addEventListener("click", async () => {
+  const urlInput = $("shareUrl");
+  const text = urlInput ? urlInput.value : location.href;
+  try {
+    await navigator.clipboard.writeText(text);
+    const btn = $("copyShareBtn");
+    const oldText = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(() => (btn.textContent = oldText), 1200);
+  } catch {
+    // Fallback: select the input so the user can Ctrl-C
+    if (urlInput) {
+      urlInput.select();
+    }
+  }
+});
+
+// "Open in main viewer" button on report-only page
+if ($("openMainBtn")) $("openMainBtn").addEventListener("click", () => {
+  const hash = location.hash || "";
+  // Forward the r= payload so the main viewer auto-loads it.
+  location.href = absUrl("index.html") + hash;
+});
+
+// ---------- Boot ----------
+if (IS_REPORT_ONLY) {
+  // On the output-only page we expect a #r= payload. If missing, show an error
+  // and link back to the main viewer instead of rendering the decoder UI.
+  const loaded = bootFromHash();
+  const viewer = $("viewer");
+  const loading = $("report-loading");
+  if (!loaded) {
+    showError("No report payload in URL. Open a report link generated from the main viewer.");
+  } else {
+    if (loading) loading.hidden = true;
+    if (viewer) viewer.hidden = false;
+  }
+} else {
+  bootFromHash();
+}

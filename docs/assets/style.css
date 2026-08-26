@@ -142,6 +142,35 @@ textarea {
   font-size: 0.82rem;
 }
 
+.share-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.75rem 0;
+  padding: 0.7rem 0.9rem;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.share-bar .share-label {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-right: 0.25rem;
+}
+.share-bar input[type="text"] {
+  flex: 1;
+  min-width: 240px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--accent-2);
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+.btn.small { padding: 0.45rem 0.8rem; font-size: 0.85rem; }
+
 .status {
   margin-top: 1rem;
   padding: 0.8rem 1rem;

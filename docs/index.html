@@ -72,6 +72,12 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/caseclosed-mp4/caseUN
           <input type="file" id="fileInput" accept="application/json,.json,.txt" hidden />
         </label>
       </div>
+      <div class="share-bar" id="shareBar" hidden>
+        <span class="share-label">🔗 Shareable link (output-only page):</span>
+        <input id="shareUrl" type="text" readonly />
+        <button id="copyShareBtn" class="btn primary small">Copy link</button>
+        <a id="openShareBtn" class="btn ghost" target="_blank" rel="noopener">Open</a>
+      </div>
       <div id="status" class="status" hidden></div>
       <div id="reportView" class="report" hidden>
         <div class="stats">
