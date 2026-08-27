@@ -171,6 +171,61 @@ textarea {
 }
 .btn.small { padding: 0.45rem 0.8rem; font-size: 0.85rem; }
 
+/* --- short links: key chip, publish note, report API settings --- */
+.share-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: -0.35rem 0 0.75rem;
+  font-size: 0.8rem;
+}
+.key-chip {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  background: rgba(86, 211, 100, 0.1);
+  border: 1px solid rgba(86, 211, 100, 0.35);
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  cursor: help;
+}
+
+.api-config {
+  margin: 0.75rem 0;
+  padding: 0.7rem 0.9rem;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.api-config summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.api-config summary:hover { color: var(--text); }
+.api-config .muted { font-size: 0.82rem; margin: 0.6rem 0; }
+.api-config code {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--accent-2);
+}
+.api-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.api-row input[type="text"] {
+  flex: 1;
+  min-width: 240px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--accent-2);
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+#apiStatus { font-family: var(--mono); font-size: 0.76rem; margin: 0.6rem 0 0; }
+
 .status {
   margin-top: 1rem;
   padding: 0.8rem 1rem;

@@ -313,6 +313,114 @@ function Harness.run()
 	return report
 end
 
+-- Executors expose the outbound HTTP function under a pile of different names.
+local HTTP_NAMES = {
+	"request",
+	"http_request",
+	"http.request",
+	"syn.request",
+	"fluxus.request",
+	"fluxus.http_request",
+	"krnl.request",
+	"delta.request",
+	"wave.request",
+	"redness.request",
+	"macsploit.request",
+	"electron.request",
+}
+
+local function resolveHttp()
+	for _, name in ipairs(HTTP_NAMES) do
+		local fn = Core.resolve(name)
+		if type(fn) == "function" then
+			return fn, name
+		end
+	end
+	return nil
+end
+
+local function pick(t, keys)
+	for _, k in ipairs(keys) do
+		local v = t[k]
+		if v ~= nil then
+			return v
+		end
+	end
+	return nil
+end
+
+-- The report page that a short link should land on.
+local function reportPage(pages)
+	if string.sub(pages, -1) == "/" then
+		return pages .. "report.html"
+	end
+	return (string.gsub(pages, "[^/]*$", "report.html"))
+end
+
+-- Where the report API lives. Explicit `apiUrl` wins; otherwise derive the
+-- origin from `pagesUrl`, which is correct for the all-in-one Worker deploy
+-- (site + API on one origin) and a harmless 404 on plain GitHub Pages.
+function Harness.apiUrl()
+	local cfg = session.config or {}
+	if type(cfg.apiUrl) == "string" and cfg.apiUrl ~= "" then
+		return cfg.apiUrl
+	end
+	local pages = cfg.pagesUrl or "https://caseclosed-mp4.github.io/caseUNC/"
+	local origin = string.match(pages, "^(%a[%w+%-%.]*://[^/]+)")
+	if not origin then
+		return nil
+	end
+	return origin .. "/api/report"
+end
+
+-- Hand the base64 report code to the report API and get a short key back.
+-- Never raises: callers print whatever reason comes back.
+function Harness.publish(payload, apiUrl, token)
+	if type(apiUrl) ~= "string" or apiUrl == "" then
+		return nil, "no apiUrl configured"
+	end
+
+	local http, via = resolveHttp()
+	if not http then
+		return nil, "no request function available"
+	end
+
+	local headers = { ["Content-Type"] = "text/plain; charset=utf-8" }
+	if type(token) == "string" and token ~= "" then
+		headers["x-caseunc-token"] = token
+	end
+
+	local ok, res = pcall(http, {
+		Url = apiUrl,
+		Method = "POST",
+		Headers = headers,
+		Body = payload,
+	})
+	if not ok then
+		return nil, "request failed (" .. tostring(via) .. "): " .. tostring(res)
+	end
+	if type(res) ~= "table" then
+		return nil, "bad response from " .. tostring(via)
+	end
+
+	local status = tonumber(pick(res, { "StatusCode", "statusCode", "status", "Status" }) or 0)
+	local body = tostring(pick(res, { "Body", "body", "Text", "text" }) or "")
+
+	if status < 200 or status >= 300 then
+		local hint = ""
+		if status == 404 then
+			hint = " (no report API at this URL - see worker/README.md)"
+		end
+		return nil, "http " .. tostring(status) .. hint
+	end
+
+	local data = Core.jsonDecode(body)
+	if type(data) ~= "table" or type(data.key) ~= "string" or data.key == "" then
+		return nil, "response carried no key"
+	end
+	return data.key
+end
+
 function Harness.export(report)
 	local encoded = Core.jsonEncode(report)
 	if not encoded then
@@ -355,6 +463,13 @@ function Harness.export(report)
 	local pagesBase = session.config.pagesUrl or "https://caseclosed-mp4.github.io/caseUNC/"
 	local viewUrl = pagesBase .. "#r=" .. b64
 
+	local api = Harness.apiUrl()
+	local key, publishErr = nil, nil
+	if session.config.publish ~= false then
+		key, publishErr = Harness.publish(b64, api, session.config.apiToken)
+	end
+	local shortUrl = key and (reportPage(pagesBase) .. "#k=" .. key) or nil
+
 	Console.section("EXPORT")
 	Console.print("  JSON bytes : " .. tostring(#compactJson))
 	if report.seal then
@@ -365,17 +480,32 @@ function Harness.export(report)
 			Console.print("  Seal error : " .. tostring(report.seal.error))
 		end
 	end
-	Console.print("  Web report : " .. pagesBase)
-	Console.print("  Paste code : stored in getgenv().caseUNC_LastReport")
-	Console.print("")
-	Console.print("  To view online, open the site and paste the report code,")
-	Console.print("  or set clipboard if available.")
+
+	if shortUrl then
+		Console.print("  Report key : " .. key)
+		Console.print("  Short link : " .. shortUrl)
+		Console.print("")
+		Console.print("  Open the short link to view this report online.")
+		Console.print("  Set publish = false in caseUNCConfig to skip uploading.")
+	else
+		Console.print("  Short link : unavailable (" .. tostring(publishErr) .. ")")
+		Console.print("  API target : " .. tostring(api))
+		Console.print("")
+		Console.print("  Deploy the report API (see worker/README.md) or set")
+		Console.print("  apiUrl in caseUNCConfig to get a short shareable link.")
+		Console.print("  Meanwhile paste the base64 code into the web viewer.")
+	end
 	Console.print("")
 
 	local clip = Core.resolve("setclipboard") or Core.resolve("toclipboard")
 	if type(clip) == "function" then
-		pcall(clip, b64)
-		Console.print("  Report code copied to clipboard (base64 JSON)")
+		if shortUrl then
+			pcall(clip, shortUrl)
+			Console.print("  Clipboard  : short link")
+		else
+			pcall(clip, b64)
+			Console.print("  Clipboard  : base64 report code")
+		end
 	end
 
 	if writefile then
@@ -391,6 +521,10 @@ function Harness.export(report)
 		viewUrl = viewUrl,
 		pagesBase = pagesBase,
 		urlPayload = urlPayload,
+		key = key,
+		shortUrl = shortUrl,
+		apiUrl = api,
+		publishError = publishErr,
 	}
 
 	return report.export

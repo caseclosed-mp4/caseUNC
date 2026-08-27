@@ -54,10 +54,14 @@
         <button id="clearBtn" class="btn ghost">Clear</button>
       </div>
       <div class="share-bar" id="shareBar" hidden>
-        <span class="share-label">🔗 Shareable link:</span>
+        <span class="share-label" id="shareLabel">🔗 Short link:</span>
         <input id="shareUrl" type="text" readonly />
         <button id="copyShareBtn" class="btn primary small">Copy link</button>
         <button id="openMainBtn" class="btn ghost">Open in main viewer</button>
+      </div>
+      <div class="share-meta" id="shareMeta" hidden>
+        <span class="key-chip" id="shareKey" hidden></span>
+        <span class="muted" id="shareNote"></span>
       </div>
       <div id="status" class="status" hidden></div>
       <div id="reportView" class="report" hidden>
@@ -92,6 +96,9 @@
     <span>caseUNC · MIT · not affiliated with Roblox Corporation</span>
   </footer>
 
+  <script src="assets/config.js"></script>
+  <script src="assets/key.js"></script>
+  <script src="assets/share.js"></script>
   <script src="assets/app.js"></script>
 </body>
 </html>

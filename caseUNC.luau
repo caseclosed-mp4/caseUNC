@@ -15,6 +15,9 @@ Harness.configure({
 	export = cfg.export ~= false,
 	pagesUrl = cfg.pagesUrl or "https://caseclosed-mp4.github.io/caseUNC/",
 	rawUrl = cfg.rawUrl or "https://raw.githubusercontent.com/caseclosed-mp4/caseUNC/main/build/caseUNC.luau",
+	publish = cfg.publish ~= false,
+	apiUrl = cfg.apiUrl or "",
+	apiToken = cfg.apiToken or "",
 })
 
 local suiteNames = {
