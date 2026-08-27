@@ -2,6 +2,7 @@ local Core = require("modules/core")
 local Crypto = require("modules/crypto")
 local Integrity = require("modules/integrity")
 local Console = require("modules/console")
+local Lzss = require("modules/lzss")
 
 local Harness = {}
 
@@ -470,6 +471,18 @@ function Harness.export(report)
 	end
 	local shortUrl = key and (reportPage(pagesBase) .. "#k=" .. key) or nil
 
+	-- No server required: the LZSS-shrunk report rides in the URL itself, ~10x
+	-- smaller than raw base64, so a shareable link works with no API deployed.
+	local compressedUrl, compressErr = nil, nil
+	if session.config.compressUrl ~= false then
+		local ok, packed = pcall(Lzss.compress, compactJson)
+		if ok then
+			compressedUrl = reportPage(pagesBase) .. "#c=" .. Crypto.b64url(packed)
+		else
+			compressErr = tostring(packed)
+		end
+	end
+
 	Console.section("EXPORT")
 	Console.print("  JSON bytes : " .. tostring(#compactJson))
 	if report.seal then
@@ -487,9 +500,19 @@ function Harness.export(report)
 		Console.print("")
 		Console.print("  Open the short link to view this report online.")
 		Console.print("  Set publish = false in caseUNCConfig to skip uploading.")
+	elseif compressedUrl then
+		Console.print("  Share link : " .. compressedUrl)
+		Console.print("  Link chars : " .. tostring(#compressedUrl))
+		Console.print("")
+		Console.print("  The whole report is compressed into that URL, so it")
+		Console.print("  works with no API deployed. Deploy one (see")
+		Console.print("  worker/README.md) for a 10-character key instead.")
 	else
 		Console.print("  Short link : unavailable (" .. tostring(publishErr) .. ")")
 		Console.print("  API target : " .. tostring(api))
+		if compressErr then
+			Console.print("  Compress   : failed (" .. compressErr .. ")")
+		end
 		Console.print("")
 		Console.print("  Deploy the report API (see worker/README.md) or set")
 		Console.print("  apiUrl in caseUNCConfig to get a short shareable link.")
@@ -502,6 +525,9 @@ function Harness.export(report)
 		if shortUrl then
 			pcall(clip, shortUrl)
 			Console.print("  Clipboard  : short link")
+		elseif compressedUrl then
+			pcall(clip, compressedUrl)
+			Console.print("  Clipboard  : share link")
 		else
 			pcall(clip, b64)
 			Console.print("  Clipboard  : base64 report code")
@@ -523,6 +549,8 @@ function Harness.export(report)
 		urlPayload = urlPayload,
 		key = key,
 		shortUrl = shortUrl,
+		compressedUrl = compressedUrl,
+		compressError = compressErr,
 		apiUrl = api,
 		publishError = publishErr,
 	}

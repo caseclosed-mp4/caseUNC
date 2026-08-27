@@ -13,6 +13,7 @@ const $ = (id) => document.getElementById(id);
 // Loaded from assets/key.js and assets/share.js (pure modules, unit-tested).
 const Key = window.caseUNCKey;
 const Share = window.caseUNCShare;
+const Compress = window.caseUNCCompress;
 
 function absUrl(path) {
   // Build absolute URL relative to this script's directory so links work on
@@ -151,6 +152,18 @@ async function hmacSha256Hex(key, message) {
   );
   const sig = await crypto.subtle.sign("HMAC", cryptoKey, enc.encode(message));
   return bytesToHex(sig);
+}
+
+/**
+ * The report as JSON *text*, whether the caller handed us JSON or the base64
+ * report code. Compression works on these bytes, and both the executor and the
+ * viewer have to agree on exactly which bytes go in.
+ */
+function payloadJsonText(raw) {
+  const trimmed = String(raw || "").trim();
+  if (!trimmed) throw new Error("Empty input");
+  if (trimmed.startsWith("{")) return trimmed;
+  return new TextDecoder().decode(b64ToBytes(trimmed));
 }
 
 function decodePayload(raw) {
@@ -312,7 +325,21 @@ async function refreshShare(rawInput) {
     return;
   }
 
-  const longUrl = `${absUrl("report.html")}#r=${encodeURIComponent(trimmed)}`;
+  // Default shareable link: the report compressed into the URL. Falls back to
+  // the legacy inline base64 if compression is unavailable or the input is not
+  // a report we can read.
+  const rawUrl = `${absUrl("report.html")}#r=${encodeURIComponent(trimmed)}`;
+  let longUrl = rawUrl;
+  if (Compress) {
+    try {
+      longUrl = Share.compressedUrl(
+        absUrl("report.html"),
+        Compress.encodeText(payloadJsonText(trimmed))
+      );
+    } catch {
+      longUrl = rawUrl;
+    }
+  }
   bar.hidden = false;
   if (meta) meta.hidden = false;
 
@@ -440,7 +467,8 @@ function failBoot(message) {
 
 /**
  * Load a report referenced by the URL fragment. `#k=<key>` fetches from the
- * report API; `#r=<base64>` is the legacy inline form and still works.
+ * report API, `#c=<compressed>` carries the whole report inline without one,
+ * and `#r=<base64>` is the legacy uncompressed form — all still work.
  * @returns {Promise<boolean>} true when a report was rendered
  */
 async function bootFromHash() {
@@ -448,6 +476,22 @@ async function bootFromHash() {
   if (!ref) return false;
 
   try {
+    if (ref.kind === "compressed") {
+      let jsonText;
+      try {
+        jsonText = Compress.decodeText(ref.value);
+      } catch (err) {
+        failBoot(
+          `This share link is truncated or corrupt (${err.message}). ` +
+            "Paste the report code into the box instead."
+        );
+        return false;
+      }
+      if ($("reportInput")) $("reportInput").value = jsonText;
+      await parseInput();
+      return true;
+    }
+
     if (ref.kind === "payload") {
       if ($("reportInput")) $("reportInput").value = ref.value;
       await parseInput();
@@ -576,7 +620,7 @@ if ($("copyShareBtn")) $("copyShareBtn").addEventListener("click", async () => {
 // "Open in main viewer" button on report-only page
 if ($("openMainBtn")) $("openMainBtn").addEventListener("click", () => {
   const hash = location.hash || "";
-  // Forward the k=/r= payload so the main viewer auto-loads it.
+  // Forward the k=/c=/r= payload so the main viewer auto-loads it.
   location.href = absUrl("index.html") + hash;
 });
 
@@ -647,7 +691,7 @@ if ($("apiTestBtn")) $("apiTestBtn").addEventListener("click", async () => {
 // ---------- Boot ----------
 (async () => {
   if (IS_REPORT_ONLY) {
-    // On the output-only page we expect a #k= (or legacy #r=) reference. If it
+    // On the output-only page we expect a #k=, #c= or legacy #r= reference. If it
     // is missing, show an error and link back to the main viewer instead of
     // rendering the decoder UI.
     const loaded = await bootFromHash();
