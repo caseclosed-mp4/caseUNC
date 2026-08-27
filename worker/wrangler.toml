@@ -1,0 +1,27 @@
+name = "caseunc-report-api"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# Create one with:  wrangler kv namespace create REPORTS
+# then paste the returned id below (add preview_id too if you want `wrangler dev`
+# to talk at a separate namespace).
+[[kv_namespaces]]
+binding = "REPORTS"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+[vars]
+# Where share links point. Trailing slash optional; /report.html#k=<key> is appended.
+VIEWER_BASE = "https://caseclosed-mp4.github.io/caseUNC/"
+# Report lifetime in KV seconds. Minimum 60. Default 90 days.
+TTL_SECONDS = "7776000"
+
+# --- Optional hardening (uncomment to enable) ---
+# WRITE_TOKEN = "put-a-long-random-string-here"   # clients must send x-caseunc-token
+# ALLOWED_ORIGINS = "https://caseclosed-mp4.github.io"  # comma list; default is *
+# RATE_LIMIT_PER_MIN = "30"                        # per-IP writes per minute
+
+# --- All-in-one deploy (site + API on one origin) ---
+# Uncomment to also serve docs/ from this Worker. Then the viewer can call the
+# API same-origin and you can drop GitHub Pages entirely.
+# [assets]
+# directory = "../docs"

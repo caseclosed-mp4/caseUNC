@@ -46,6 +46,7 @@
         <li>caseUNC prints to <strong>both</strong> the external terminal (rconsole) and Roblox output.</li>
         <li>Report JSON is sealed, saved (if filesystem works), and copied to clipboard when possible.</li>
         <li>Paste the base64 report code below to visualize passes, fails, and spoof risk.</li>
+        <li>With the report API deployed, the console prints a short link and the viewer hands you a <code>#k=</code> key instead of a giant URL.</li>
       </ol>
       <div class="config">
         <h3>Optional config</h3>
@@ -62,7 +63,7 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/caseclosed-mp4/caseUN
 
     <section id="viewer" class="panel">
       <h2>Report viewer</h2>
-      <p class="muted">Paste a caseUNC base64 report payload. Signature, body hash, and spoof findings are verified client-side.</p>
+      <p class="muted">Paste a caseUNC base64 report payload, or open a <code>#k=</code> short link. Signature, body hash, and spoof findings are verified client-side.</p>
       <textarea id="reportInput" placeholder="Paste base64 report code from caseUNC export..."></textarea>
       <div class="cta-row">
         <button id="parseBtn" class="btn primary">Decode &amp; verify</button>
@@ -72,11 +73,30 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/caseclosed-mp4/caseUN
           <input type="file" id="fileInput" accept="application/json,.json,.txt" hidden />
         </label>
       </div>
+      <details class="api-config" id="apiConfig">
+        <summary>Short links &amp; report API</summary>
+        <p class="muted">
+          Share links are <code>report.html#k=&lt;10-char key&gt;</code>. The key is the
+          SHA-256 of the report, so the same run always produces the same link. The report
+          body itself is stored by the API — deploy it from <code>worker/</code>, then point
+          the viewer at it here.
+        </p>
+        <div class="api-row">
+          <input id="apiUrlInput" type="text" placeholder="https://your-api.example (blank = same origin)" spellcheck="false" />
+          <button id="apiSaveBtn" class="btn ghost small">Save</button>
+          <button id="apiTestBtn" class="btn ghost small">Test</button>
+        </div>
+        <p class="muted" id="apiStatus"></p>
+      </details>
       <div class="share-bar" id="shareBar" hidden>
-        <span class="share-label">🔗 Shareable link (output-only page):</span>
+        <span class="share-label" id="shareLabel">🔗 Shareable link:</span>
         <input id="shareUrl" type="text" readonly />
         <button id="copyShareBtn" class="btn primary small">Copy link</button>
         <a id="openShareBtn" class="btn ghost" target="_blank" rel="noopener">Open</a>
+      </div>
+      <div class="share-meta" id="shareMeta" hidden>
+        <span class="key-chip" id="shareKey" hidden></span>
+        <span class="muted" id="shareNote"></span>
       </div>
       <div id="status" class="status" hidden></div>
       <div id="reportView" class="report" hidden>
@@ -121,6 +141,9 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/caseclosed-mp4/caseUN
     <span>caseUNC · MIT · not affiliated with Roblox Corporation</span>
   </footer>
 
+  <script src="assets/config.js"></script>
+  <script src="assets/key.js"></script>
+  <script src="assets/share.js"></script>
   <script src="assets/app.js"></script>
 </body>
 </html>

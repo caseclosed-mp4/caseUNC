@@ -10,6 +10,10 @@ const IS_REPORT_ONLY =
 
 const $ = (id) => document.getElementById(id);
 
+// Loaded from assets/key.js and assets/share.js (pure modules, unit-tested).
+const Key = window.caseUNCKey;
+const Share = window.caseUNCShare;
+
 function absUrl(path) {
   // Build absolute URL relative to this script's directory so links work on
   // GitHub Pages, local file://, and any deployment path.
@@ -17,10 +21,107 @@ function absUrl(path) {
   return new URL(path, base).toString();
 }
 
-function buildShareUrl(payloadB64) {
-  const page = IS_REPORT_ONLY ? "" : "report.html";
-  return `${absUrl(page)}#r=${encodeURIComponent(payloadB64)}`;
+// ---------------------------------------------------------------------------
+// Report API
+// ---------------------------------------------------------------------------
+
+function readStoredApi() {
+  try {
+    return localStorage.getItem("caseUNC.apiUrl");
+  } catch {
+    return null;
+  }
 }
+
+function apiInfo() {
+  if (!Share) return null;
+  const cfg = window.caseUNCConfig || {};
+  return Share.resolveApi({
+    query: location.search,
+    hash: location.hash,
+    configApi: cfg.apiUrl,
+    storedApi: readStoredApi(),
+    origin: location.origin,
+    trySameOrigin: cfg.trySameOrigin !== false,
+  });
+}
+
+/** The output-only page a short link should open. */
+function shortUrlFor(key) {
+  return Share.shortUrl(absUrl("report.html"), key);
+}
+
+async function readJson(res) {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+function apiError(res, data, fallback) {
+  const detail = (data && (data.hint || data.error)) || `HTTP ${res.status}`;
+  const err = new Error(fallback ? `${fallback}: ${detail}` : detail);
+  err.code = data && data.error;
+  err.status = res.status;
+  return err;
+}
+
+/** Resolve a short key back into the base64 report code. */
+async function fetchPayloadByKey(key) {
+  const api = apiInfo();
+  if (!api) throw new Error("no report API configured");
+
+  const res = await fetch(`${api.endpoint}/${encodeURIComponent(key)}`);
+  const data = await readJson(res);
+  if (!res.ok) throw apiError(res, data, `report ${key} not available`);
+  if (!data || typeof data.payload !== "string") {
+    throw new Error("report API returned no payload");
+  }
+  return data.payload;
+}
+
+/** Hand a base64 report code to the API, get a short key back. */
+async function publishPayload(payloadB64) {
+  const api = apiInfo();
+  if (!api) {
+    const err = new Error("no report API configured");
+    err.code = "no_api";
+    throw err;
+  }
+
+  const headers = { "content-type": "text/plain; charset=utf-8" };
+  const token = (window.caseUNCConfig || {}).apiToken;
+  if (token) headers["x-caseunc-token"] = token;
+
+  let res;
+  try {
+    res = await fetch(api.endpoint, { method: "POST", headers, body: payloadB64 });
+  } catch (networkErr) {
+    const err = new Error(`cannot reach ${api.endpoint} (${networkErr.message || "network error"})`);
+    err.code = "unreachable";
+    throw err;
+  }
+
+  const data = await readJson(res);
+  if (!res.ok) throw apiError(res, data, "publish failed");
+  if (!data || typeof data.key !== "string" || !data.key) {
+    throw new Error("report API returned no key");
+  }
+
+  // Content-addressed: the key must be derivable from what we sent, otherwise
+  // the endpoint is handing out keys for something else.
+  const expected = await Key.derive(payloadB64);
+  if (expected !== data.key) {
+    throw new Error(`API returned key ${data.key}, payload hashes to ${expected}`);
+  }
+
+  return { key: data.key, dedup: Boolean(data.dedup), source: api.source };
+}
+
+// ---------------------------------------------------------------------------
+// Decoding / verification
+// ---------------------------------------------------------------------------
 
 function b64ToBytes(b64) {
   const bin = atob(b64.replace(/-/g, "+").replace(/_/g, "/").replace(/\s+/g, ""));
@@ -53,7 +154,7 @@ async function hmacSha256Hex(key, message) {
 }
 
 function decodePayload(raw) {
-  const trimmed = raw.trim();
+  const trimmed = String(raw || "").trim();
   if (!trimmed) throw new Error("Empty input");
   if (trimmed.startsWith("{")) return JSON.parse(trimmed);
   let jsonText;
@@ -97,6 +198,10 @@ async function verifySeal(report) {
   return { ok: true, bodyHash, age };
 }
 
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+
 function riskClass(risk) {
   if (risk === "spoofed") return "bad";
   if (risk === "suspicious" || risk === "elevated") return "warn";
@@ -105,12 +210,16 @@ function riskClass(risk) {
 
 function setStatus(kind, text) {
   const el = $("status");
+  if (!el) return;
   el.hidden = false;
   el.className = `status ${kind}`;
   el.textContent = text;
 }
 
 let currentReport = null;
+/** Set when a short key is known for `currentKeyPayload`. */
+let currentKey = null;
+let currentKeyPayload = null;
 
 function populateCategories(results) {
   const sel = $("filterCat");
@@ -171,20 +280,79 @@ function escapeHtml(s) {
     .replaceAll('"', "&quot;");
 }
 
-function updateShareBar(rawInput) {
-  const bar = $("shareBar");
+function presentShare({ short, key, note, label }) {
   const urlInput = $("shareUrl");
+  const labelEl = $("shareLabel");
+  const noteEl = $("shareNote");
+  const keyChip = $("shareKey");
   const openBtn = $("openShareBtn");
-  if (!bar) return; // report-only page without share UI
+
+  if (urlInput) urlInput.value = short;
+  if (openBtn) openBtn.href = short;
+  if (labelEl) labelEl.textContent = label;
+  if (noteEl) noteEl.textContent = note;
+  if (keyChip) {
+    keyChip.hidden = !key;
+    if (key) {
+      keyChip.textContent = `key ${key}`;
+      keyChip.title = "Content-addressed SHA-256 key. The same report always maps to the same key.";
+    }
+  }
+}
+
+async function refreshShare(rawInput) {
+  const bar = $("shareBar");
+  if (!bar) return; // page without share UI
+
   const trimmed = (rawInput || "").trim();
+  const meta = $("shareMeta");
   if (!trimmed) {
     bar.hidden = true;
+    if (meta) meta.hidden = true;
     return;
   }
-  const url = buildShareUrl(trimmed);
-  if (urlInput) urlInput.value = url;
-  if (openBtn) openBtn.href = url;
+
+  const longUrl = `${absUrl("report.html")}#r=${encodeURIComponent(trimmed)}`;
   bar.hidden = false;
+  if (meta) meta.hidden = false;
+
+  // We already have a key for exactly this payload (opened via #k=, or published
+  // a moment ago), so there is no reason to POST it back at the API. Comparing
+  // the payload is what stops a stale key being shown for a freshly pasted one.
+  if (currentKey && currentKeyPayload === trimmed) {
+    const short = shortUrlFor(currentKey);
+    presentShare({
+      short,
+      key: currentKey,
+      label: "🔗 Short link:",
+      note: `loaded from the report API · ${longUrl.length} chars inline → ${short.length} chars`,
+    });
+    return;
+  }
+
+  // Show the legacy long link right away so the bar is never useless while the
+  // publish is in flight (or if it fails).
+  presentShare({ short: longUrl, key: null, label: "🔗 Shareable link:", note: "Publishing short link…" });
+
+  try {
+    const { key, source } = await publishPayload(trimmed);
+    currentKey = key;
+    currentKeyPayload = trimmed;
+    const short = shortUrlFor(key);
+    presentShare({
+      short,
+      key,
+      label: "🔗 Short link:",
+      note: `published to the report API (${source}) · ${longUrl.length} chars inline → ${short.length} chars`,
+    });
+  } catch (err) {
+    presentShare({
+      short: longUrl,
+      key: null,
+      label: "🔗 Long link (short link unavailable):",
+      note: `${err.message}. Deploy the report API (worker/README.md) or set the API URL above — until then this link carries the whole report inline.`,
+    });
+  }
 }
 
 async function showReport(report) {
@@ -245,29 +413,73 @@ async function parseInput() {
   try {
     const report = decodePayload(raw);
     await showReport(report);
-    updateShareBar(raw);
+    await refreshShare(raw);
   } catch (err) {
-    $("reportView").hidden = true;
+    if ($("reportView")) $("reportView").hidden = true;
     setStatus("bad", String(err.message || err));
     const bar = $("shareBar");
     if (bar) bar.hidden = true;
+    const meta = $("shareMeta");
+    if (meta) meta.hidden = true;
   }
 }
 
-function bootFromHash() {
-  const hash = location.hash || "";
-  const m = hash.match(/[#&]r=([^&]+)/);
-  if (m) {
-    try {
-      const payload = decodeURIComponent(m[1]);
-      if ($("reportInput")) $("reportInput").value = payload;
-      parseInput();
+// ---------------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------------
+
+/**
+ * Report a boot failure without wrecking the page. On the output-only page the
+ * whole page *is* the report, so we replace it with an error. On the main
+ * viewer the paste box must stay usable, so we only flag a warning.
+ */
+function failBoot(message) {
+  if (IS_REPORT_ONLY) showError(message);
+  else setStatus("warn", message);
+}
+
+/**
+ * Load a report referenced by the URL fragment. `#k=<key>` fetches from the
+ * report API; `#r=<base64>` is the legacy inline form and still works.
+ * @returns {Promise<boolean>} true when a report was rendered
+ */
+async function bootFromHash() {
+  const ref = Share ? Share.parseHash(location.hash || "") : null;
+  if (!ref) return false;
+
+  try {
+    if (ref.kind === "payload") {
+      if ($("reportInput")) $("reportInput").value = ref.value;
+      await parseInput();
       return true;
-    } catch {
-      /* ignore */
     }
+
+    if (!Key.isValid(ref.value)) {
+      failBoot(`"${ref.value}" is not a valid report key.`);
+      return false;
+    }
+
+    const loading = $("report-loading");
+    if (loading) loading.textContent = `Fetching report ${ref.value}…`;
+
+    const payload = await fetchPayloadByKey(ref.value);
+
+    // Prove the blob the API handed back really is the one the key names.
+    const derived = await Key.derive(payload);
+    if (derived !== ref.value) {
+      failBoot(`Key mismatch: this payload hashes to ${derived}, but the link asked for ${ref.value}.`);
+      return false;
+    }
+
+    currentKey = ref.value;
+    currentKeyPayload = payload;
+    if ($("reportInput")) $("reportInput").value = payload;
+    await parseInput();
+    return true;
+  } catch (err) {
+    failBoot(String(err.message || err));
+    return false;
   }
-  return false;
 }
 
 function showError(msg) {
@@ -283,12 +495,21 @@ function showError(msg) {
     link.textContent = "← Open the main viewer";
     errEl.appendChild(text);
     errEl.appendChild(link);
+
+    const hint = document.createElement("div");
+    hint.className = "muted";
+    hint.textContent =
+      " Short links expire when their TTL runs out. If you have the base64 report code, paste it into the main viewer instead.";
+    errEl.appendChild(hint);
   }
   const viewer = $("viewer");
   if (viewer) viewer.hidden = true;
 }
 
-// ---------- Wire up elements that may or may not exist on each page ----------
+// ---------------------------------------------------------------------------
+// Wire up elements that may or may not exist on each page
+// ---------------------------------------------------------------------------
+
 if ($("parseBtn")) $("parseBtn").addEventListener("click", parseInput);
 
 if ($("clearBtn")) $("clearBtn").addEventListener("click", () => {
@@ -297,7 +518,11 @@ if ($("clearBtn")) $("clearBtn").addEventListener("click", () => {
   $("status").hidden = true;
   const bar = $("shareBar");
   if (bar) bar.hidden = true;
+  const meta = $("shareMeta");
+  if (meta) meta.hidden = true;
   currentReport = null;
+  currentKey = null;
+  currentKeyPayload = null;
   if (IS_REPORT_ONLY) {
     // On the output-only page a clear makes no sense without a decoder; bounce
     // the user back to the main viewer.
@@ -351,23 +576,92 @@ if ($("copyShareBtn")) $("copyShareBtn").addEventListener("click", async () => {
 // "Open in main viewer" button on report-only page
 if ($("openMainBtn")) $("openMainBtn").addEventListener("click", () => {
   const hash = location.hash || "";
-  // Forward the r= payload so the main viewer auto-loads it.
+  // Forward the k=/r= payload so the main viewer auto-loads it.
   location.href = absUrl("index.html") + hash;
 });
 
-// ---------- Boot ----------
-if (IS_REPORT_ONLY) {
-  // On the output-only page we expect a #r= payload. If missing, show an error
-  // and link back to the main viewer instead of rendering the decoder UI.
-  const loaded = bootFromHash();
-  const viewer = $("viewer");
-  const loading = $("report-loading");
-  if (!loaded) {
-    showError("No report payload in URL. Open a report link generated from the main viewer.");
-  } else {
-    if (loading) loading.hidden = true;
-    if (viewer) viewer.hidden = false;
+// ---------- Report API settings (main viewer only) ----------
+function describeApi() {
+  const status = $("apiStatus");
+  const input = $("apiUrlInput");
+  if (!status) return;
+  const api = apiInfo();
+  if (!api) {
+    status.textContent = "No API configured. Short links are unavailable.";
+    return;
   }
-} else {
-  bootFromHash();
+  status.textContent = `Using ${api.endpoint} (from ${api.source}).`;
+  if (input && input.value.trim() === "" && api.source === "stored") {
+    input.placeholder = api.base;
+  }
 }
+
+if ($("apiUrlInput")) {
+  $("apiUrlInput").value = readStoredApi() || "";
+  describeApi();
+}
+
+if ($("apiSaveBtn")) $("apiSaveBtn").addEventListener("click", async () => {
+  const value = $("apiUrlInput").value.trim();
+  try {
+    if (value) localStorage.setItem("caseUNC.apiUrl", value);
+    else localStorage.removeItem("caseUNC.apiUrl");
+  } catch {
+    /* private mode: nothing we can do */
+  }
+  describeApi();
+
+  const btn = $("apiSaveBtn");
+  btn.textContent = "Saved";
+  setTimeout(() => (btn.textContent = "Save"), 1200);
+
+  // Re-publish whatever is on screen so the share bar picks up the new API.
+  if (currentReport && $("reportInput")) await refreshShare($("reportInput").value);
+});
+
+if ($("apiTestBtn")) $("apiTestBtn").addEventListener("click", async () => {
+  const btn = $("apiTestBtn");
+  const status = $("apiStatus");
+  const api = apiInfo();
+  if (!api) {
+    if (status) status.textContent = "Nothing to test — set an API URL first.";
+    return;
+  }
+  btn.textContent = "Testing…";
+  try {
+    const res = await fetch(Share.healthEndpoint(api.endpoint));
+    const data = await readJson(res);
+    if (!res.ok || !data || !data.ok) throw new Error(`HTTP ${res.status}`);
+    const days = Math.round((data.ttlSeconds || 0) / 86400);
+    status.textContent =
+      `OK · ${data.service} v${data.version} · ${data.keyLength}-char keys · ` +
+      `${days}-day TTL${data.writeProtected ? " · writes need a token" : ""}`;
+  } catch (err) {
+    status.textContent =
+      `Unreachable: ${err.message}. If the API is on another origin, its CORS ` +
+      `settings must allow ${location.origin}.`;
+  }
+  btn.textContent = "Test";
+});
+
+// ---------- Boot ----------
+(async () => {
+  if (IS_REPORT_ONLY) {
+    // On the output-only page we expect a #k= (or legacy #r=) reference. If it
+    // is missing, show an error and link back to the main viewer instead of
+    // rendering the decoder UI.
+    const loaded = await bootFromHash();
+    if (loaded) {
+      const loading = $("report-loading");
+      const viewer = $("viewer");
+      if (loading) loading.hidden = true;
+      if (viewer) viewer.hidden = false;
+    } else if (!$("report-error") || $("report-error").hidden) {
+      // bootFromHash already reported a specific failure (expired key, bad key,
+      // unreachable API); only add the generic message when it said nothing.
+      showError("No report key in URL. Open a report link generated from the main viewer.");
+    }
+  } else {
+    await bootFromHash();
+  }
+})();

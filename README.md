@@ -29,6 +29,9 @@ getgenv().caseUNCConfig = {
     delay = 0,
     export = true,
     pagesUrl = "https://caseclosed-mp4.github.io/caseUNC/",
+    publish = true,
+    apiUrl = "",
+    apiToken = "",
 }
 
 loadstring(game:HttpGet("https://caseclosed-mp4.github.io/caseUNC/caseUNC.luau"))()
@@ -45,6 +48,7 @@ caseUNC/
   tests/
   build/
   docs/
+  worker/
 ```
 
 | Path | Role |
@@ -53,6 +57,7 @@ caseUNC/
 | `tests/` | UNC category suites + anti-spoof suite |
 | `build/caseUNC.luau` | Single-file loadstring bundle |
 | `docs/` | GitHub Pages report viewer |
+| `worker/` | Report API that backs short share links |
 
 ## What it tests
 
@@ -81,7 +86,8 @@ After the run:
 
 - Summary score, spoof risk, session id
 - HMAC-SHA256 sealed report in `getgenv().caseUNC_LastReport`
-- Base64 report code copied to clipboard when `setclipboard` works
+- A **short link** copied to clipboard when `setclipboard` works and the report
+  API is reachable — otherwise the base64 report code, as before
 - JSON file written when filesystem APIs work
 
 ## Web viewer
@@ -92,6 +98,32 @@ Then open **[caseclosed-mp4.github.io/caseUNC](https://caseclosed-mp4.github.io/
 
 You can also open `docs/index.html` locally.
 
+## Short share links
+
+Pasting works, but the resulting URL carries the entire report inline — tens of
+thousands of characters. With the report API deployed, links are a 10-character
+key instead:
+
+```
+https://caseclosed-mp4.github.io/caseUNC/report.html#k=9F3A1B2C7D
+```
+
+The key is the first 10 characters of the SHA-256 of the report payload, in
+Crockford base32. Content-addressed, so the same run always produces the same
+link, and the viewer re-derives it from the payload it fetches to prove nothing
+was swapped in transit.
+
+The API is a self-hosted Cloudflare Worker + KV — see **[worker/README.md](worker/README.md)**
+for the deploy. Nothing is uploaded unless you point caseUNC or the viewer at an
+API you control; set `publish = false` to stop the executor trying. Old `#r=`
+links keep working.
+
+| Config | Default | Meaning |
+| --- | --- | --- |
+| `publish` | `true` | Let the exporter POST the report to the API |
+| `apiUrl` | `""` | API endpoint; empty derives `<pagesUrl origin>/api/report` |
+| `apiToken` | `""` | Sent as `x-caseunc-token` when the API requires one |
+
 ## Build
 
 ```bash
@@ -99,6 +131,21 @@ python3 build/bundle.py
 ```
 
 Produces `build/caseUNC.luau` and copies it to `docs/caseUNC.luau` for Pages.
+
+## Tests
+
+```bash
+cd worker && npm test
+```
+
+Covers the report API (key derivation, publish/resolve round trip over real
+sockets, dedup, TTL expiry, malformed and oversized payloads, CORS, write token,
+rate limiting) and the browser-side modules in `docs/assets`, including a check
+that the viewer's key derivation and the Worker's never drift apart. No
+dependencies beyond Node's built-in test runner.
+
+The Luau suites in `tests/` are capability probes for executors, not unit tests;
+they run inside Roblox.
 
 ## License
 

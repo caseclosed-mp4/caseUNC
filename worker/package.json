@@ -1,0 +1,12 @@
+{
+  "name": "caseunc-report-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker + KV that stores caseUNC reports behind short content-addressed keys.",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  }
+}
