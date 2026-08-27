@@ -7,7 +7,7 @@ compatibility_date = "2025-01-01"
 # to talk at a separate namespace).
 [[kv_namespaces]]
 binding = "REPORTS"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+id = "12bf382c92c64798b5f7f0b9b4403580"
 
 [vars]
 # Where share links point. Trailing slash optional; /report.html#k=<key> is appended.
