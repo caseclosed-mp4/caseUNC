@@ -152,6 +152,16 @@ function Crypto.b64decode(data)
 	end))
 end
 
+-- URL-safe base64 (RFC 4648 section 5), unpadded: safe to drop into a URL fragment.
+-- Shares the alphabet with docs/assets/compress.js base64UrlToBytes().
+function Crypto.b64url(data)
+	local s = Crypto.b64encode(data)
+	s = string.gsub(s, "%+", "-")
+	s = string.gsub(s, "/", "_")
+	s = string.gsub(s, "=", "")
+	return s
+end
+
 function Crypto.rand32()
 	return math.random(0, 2147483646)
 end

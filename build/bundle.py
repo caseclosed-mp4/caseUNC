@@ -14,6 +14,7 @@ MANIFEST = ROOT / "build" / "manifest.json"
 ORDER = [
     "modules/core.luau",
     "modules/crypto.luau",
+    "modules/lzss.luau",
     "modules/integrity.luau",
     "modules/console.luau",
     "modules/harness.luau",

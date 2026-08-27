@@ -13,17 +13,25 @@
 
   /** Short-link form: report.html#k=9F3A1B2C7D */
   var KEY_RE = /(?:^|[#&])k=([^&]+)/;
+  /** Compressed form: report.html#c=<lzss+base64url>, no API needed. */
+  var CMP_RE = /(?:^|[#&])c=([^&]+)/;
   /** Legacy long form: report.html#r=<whole base64 report> — still accepted. */
   var RAW_RE = /(?:^|[#&])r=([^&]+)/;
 
   /**
    * Pull the report reference out of a URL fragment.
-   * @returns {{kind:'key'|'payload', value:string}|null}
+   *
+   * Checked shortest-first so a link carrying more than one form resolves to
+   * the most compact one available.
+   *
+   * @returns {{kind:'key'|'compressed'|'payload', value:string}|null}
    */
   function parseHash(hash) {
     if (typeof hash !== "string" || !hash) return null;
     var m = hash.match(KEY_RE);
     if (m && m[1]) return { kind: "key", value: decodeURIComponent(m[1]) };
+    m = hash.match(CMP_RE);
+    if (m && m[1]) return { kind: "compressed", value: decodeURIComponent(m[1]) };
     m = hash.match(RAW_RE);
     if (m && m[1]) return { kind: "payload", value: decodeURIComponent(m[1]) };
     return null;
@@ -40,6 +48,15 @@
   /** `https://host/caseUNC/` + key -> shareable short URL. */
   function shortUrl(pageBase, key) {
     return pageBase + "#k=" + encodeURIComponent(key);
+  }
+
+  /**
+   * `https://host/caseUNC/report.html` + a compressed payload -> shareable URL
+   * that needs no report API. `value` is the base64url string produced by
+   * caseUNCCompress.encodeText().
+   */
+  function compressedUrl(pageBase, value) {
+    return pageBase + "#c=" + encodeURIComponent(value);
   }
 
   /** Strip trailing slashes so `${base}/api/report` never doubles up. */
@@ -93,10 +110,12 @@
 
   return {
     KEY_RE: KEY_RE,
+    CMP_RE: CMP_RE,
     RAW_RE: RAW_RE,
     parseHash: parseHash,
     readParam: readParam,
     shortUrl: shortUrl,
+    compressedUrl: compressedUrl,
     reportEndpoint: reportEndpoint,
     healthEndpoint: healthEndpoint,
     resolveApi: resolveApi,

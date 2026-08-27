@@ -32,6 +32,7 @@ getgenv().caseUNCConfig = {
     publish = true,
     apiUrl = "",
     apiToken = "",
+    compressUrl = true,
 }
 
 loadstring(game:HttpGet("https://caseclosed-mp4.github.io/caseUNC/caseUNC.luau"))()
@@ -53,7 +54,7 @@ caseUNC/
 
 | Path | Role |
 | --- | --- |
-| `modules/` | Core harness, crypto, integrity, console |
+| `modules/` | Core harness, crypto, integrity, console, LZSS |
 | `tests/` | UNC category suites + anti-spoof suite |
 | `build/caseUNC.luau` | Single-file loadstring bundle |
 | `docs/` | GitHub Pages report viewer |
@@ -86,8 +87,9 @@ After the run:
 
 - Summary score, spoof risk, session id
 - HMAC-SHA256 sealed report in `getgenv().caseUNC_LastReport`
-- A **short link** copied to clipboard when `setclipboard` works and the report
-  API is reachable — otherwise the base64 report code, as before
+- A **share link** copied to clipboard when `setclipboard` works: the 10-character
+  API key when the report API is reachable, otherwise the whole report compressed
+  into the URL (~10x smaller than raw base64), and the base64 code as a last resort
 - JSON file written when filesystem APIs work
 
 ## Web viewer
@@ -115,14 +117,45 @@ was swapped in transit.
 
 The API is a self-hosted Cloudflare Worker + KV — see **[worker/README.md](worker/README.md)**
 for the deploy. Nothing is uploaded unless you point caseUNC or the viewer at an
-API you control; set `publish = false` to stop the executor trying. Old `#r=`
-links keep working.
+API you control; set `publish = false` to stop the executor trying.
+
+### No API? The report goes in the URL, compressed
+
+Deploying a Worker is optional. Without one, the exporter LZSS-compresses the
+report and puts it straight in the link, which is the default and needs no
+server at all:
+
+```
+https://caseclosed-mp4.github.io/caseUNC/report.html#c=zQ1YA6bM2kP…
+```
+
+Measured on a 220-test report (36,032 bytes of JSON), counting the whole URL:
+
+| Form | URL characters | vs `#r=` |
+| --- | --- | --- |
+| `#r=` raw base64 | 48,099 | — |
+| `#c=` compressed | 4,877 | 9.9x smaller |
+| `#k=` API key | 65 | 740x smaller |
+
+The format is a 6-byte header (magic, version, uint32 length) followed by an
+LZSS token stream, base64url-encoded. The encoder runs in the executor
+(`modules/lzss.luau`) and the decoder in the viewer
+(`docs/assets/compress.js`); the test suite asserts their constants never drift.
+A truncated or corrupt link is rejected with a message instead of rendering half
+a report. Set `compressUrl = false` to go back to the raw base64 code.
+
+Very small reports can come out a few dozen characters *longer* than `#r=`,
+because the header costs more than LZSS saves on a payload with nothing to
+match. Anything past a handful of tests wins by a wide margin.
+
+All three forms keep working: `#k=` is preferred, then `#c=`, then legacy `#r=`.
 
 | Config | Default | Meaning |
 | --- | --- | --- |
 | `publish` | `true` | Let the exporter POST the report to the API |
 | `apiUrl` | `""` | API endpoint; empty derives `<pagesUrl origin>/api/report` |
 | `apiToken` | `""` | Sent as `x-caseunc-token` when the API requires one |
+| `compressUrl` | `true` | Compress the report into the URL when no API key is available |
 
 ## Build
 
@@ -140,9 +173,18 @@ cd worker && npm test
 
 Covers the report API (key derivation, publish/resolve round trip over real
 sockets, dedup, TTL expiry, malformed and oversized payloads, CORS, write token,
-rate limiting) and the browser-side modules in `docs/assets`, including a check
-that the viewer's key derivation and the Worker's never drift apart. No
-dependencies beyond Node's built-in test runner.
+rate limiting) and the browser-side modules in `docs/assets`, including checks
+that the viewer's key derivation and the Worker's never drift apart, and that
+the LZSS decoder matches the Luau encoder's format constants. The decoder is
+also driven with hand-built streams so an encoder bug cannot mask a decoder bug.
+No dependencies beyond Node's built-in test runner.
+
+The Luau LZSS encoder has no runtime in CI. It was cross-checked against the
+JavaScript encoder by running `modules/lzss.luau` under
+[fengari](https://github.com/fengari-io/fengari) (Lua 5.3, with `bit32` and
+`table.create` shimmed) and comparing output byte for byte: identical on every
+case tried, from the empty string to a 160,000-byte input that exercises
+hash-chain wraparound, and the JS decoder round-trips all of them.
 
 The Luau suites in `tests/` are capability probes for executors, not unit tests;
 they run inside Roblox.
